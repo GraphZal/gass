@@ -42,7 +42,7 @@ def parse_race_analysis(session):
     """
     Loads and parses the race analysis page
     :param session: a logged in session
-    :return: json-object containing the parsed data
+    :return: dict containing the parsed data
     """
     html_page = session.get("https://gpro.net/gb/RaceAnalysis.asp")
     parsed_page = BeautifulSoup(html_page.text, 'html.parser')
