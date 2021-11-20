@@ -5,6 +5,7 @@ scrape and parse its contents.
 import logging
 import re
 from getpass import getpass
+import typing
 
 import requests
 from bs4 import BeautifulSoup
@@ -58,9 +59,32 @@ def parse_race_analysis(session):
             ".block > a:nth-of-type(2)").attrs.get("href")).group(1),
         "season": regex.search(parsed_page.select_one(".block").text).group(1),
         "race": regex.search(parsed_page.select_one(".block").text).group(2),
-        "league": regex.search(parsed_page.select_one(".block").text).group(3)
+        "league": regex.search(parsed_page.select_one(".block").text).group(3),
+        "setups": _parse_race_analysis_setups(parsed_page)
     }
     return data
+
+
+def _parse_race_analysis_setups(parsed_page: BeautifulSoup):
+    """
+    parse the Setups used table on the Race analysis page
+    :param parsed_page: BeautifulSoup object for the Race analysis page
+    :return: dict containing the setups and tyres used
+    """
+    setup_table = parsed_page.find("th", text="Setups used").parent.parent
+    setups = {
+        "Q1": [ele.text.strip() for ele in setup_table.select_one("tr:nth-of-type(3)").find_all("td")],
+        "Q2": [ele.text.strip() for ele in setup_table.select_one("tr:nth-of-type(4)").find_all("td")],
+        "Race": [ele.text.strip() for ele in setup_table.select_one("tr:nth-of-type(5)").find_all("td")]
+    }
+    # clean up the lists and extract tyres
+    setups["Q1"].pop(0)
+    setups["Q1_tyres"] = setups["Q1"].pop()
+    setups["Q2"].pop(0)
+    setups["Q2_tyres"] = setups["Q2"].pop()
+    setups["Race"].pop(0)
+    setups["Race_tyres"] = setups["Race"].pop()
+    return setups
 
 
 def terminal_login():
