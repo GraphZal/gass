@@ -265,8 +265,10 @@ def parse_race_analysis(session, season: int = None, race: int = None):
     parsed_page = BeautifulSoup(html_page.text, 'html.parser')
 
     # check for race participation and error if not participated
-    if parsed_page.select_one(".center").text is f"You did not participate in Season {season}, Race {race}":
-        raise NotRacedError("You did not participate in Season {season}, Race {race}")
+
+    if parsed_page.select_one(".center").text == f"You did not participate in Season {season}, Race {race}":
+        raise NotRacedError(f"You did not participate in Season {season}, Race {race}")
+        return
 
     data = RaceAnalysisData()
     # populate instance with basic info
@@ -327,7 +329,11 @@ def terminal_login():
 def main():
     """Main method for manual testing purposes."""
     session = terminal_login()
-    parsed_race = parse_race_analysis(session)
+    try:
+        parsed_race = parse_race_analysis(session,81,8)
+    except NotRacedError as e:
+        print(e)
+        return
     print(parsed_race)
     print(asdict(parsed_race))
 
