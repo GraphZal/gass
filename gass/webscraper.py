@@ -2,17 +2,222 @@
 Provides methods to establish a connection to the GPRO website as well as
 scrape and parse its contents.
 """
+from dataclasses import dataclass, field, asdict
+import datetime
 import logging
 import re
 from getpass import getpass
-import typing
 
 import requests
 from bs4 import BeautifulSoup
 
 
-def connection_init(username, password):
-    """Initialize an http session and log in"""
+@dataclass
+class DriverDataClass:
+    name: str
+    oa: int
+    concentration: int
+    talent: int
+    aggressiveness: int
+    experience: int
+    technical_insight: int
+    stamina: int
+    charisma: int
+    motivation: int
+    reputation: int
+    weight: int
+
+
+@dataclass
+class SetupDataClass:
+    tyre: str
+    front_wing: int
+    rear_wing: int
+    engine: int
+    brakes: int
+    gearbox: int
+    suspension: int
+
+
+@dataclass
+class PracticeLapDataClass:
+    setup: SetupDataClass
+    lap_time: datetime.timedelta
+    net_time: datetime.timedelta
+    driver_mistake: datetime.timedelta
+    comments: str
+
+
+@dataclass
+class RaceRiskData:
+    overtake: int = None
+    defend: int = None
+    clear: int = None
+    malfunct: int = None
+
+
+@dataclass
+class EnergyDataClass:
+    q1_pre: int = None
+    q1_post: int = None
+    q2_pre: int = None
+    q2_post: int = None
+    race_pre: int = None
+    race_post: int = None
+
+
+@dataclass
+class CcpDataClass:
+    power: int = None
+    handling: int = None
+    acceleration: int = None
+
+
+@dataclass
+class TyreSupplierDataClass:
+    name: str
+    peak_temperature: int
+    dry: int
+    wet: int
+    durability: int
+    warmup: int
+
+
+@dataclass
+class QualifyingData:
+    setup: SetupDataClass = None
+    fuel: int = None
+    risk: str = None
+    temperature: int = None
+    humidity: int = None
+    weather: str = None
+    lap_time: datetime.timedelta = None
+
+
+@dataclass
+class WeatherForecastData:
+    temperature_min: int = None
+    temperature_max: int = None
+    humidity_min: int = None
+    humidity_max: int = None
+    rain_probability: int = None
+
+
+@dataclass
+class PitStopData:
+    lap: int = None
+    reason: str = None
+    tyre_condition: int = None
+    fuel_left_percent: int = None
+    fuel_refilled: int = None
+    time: datetime.timedelta = None
+
+
+@dataclass
+class TechProblemData:
+    lap: int = None
+    details: str = None
+
+
+@dataclass
+class OvertakingData:
+    initiated_blocked: int = None
+    initiated_successful: int = None
+    on_you_blocked: int = None
+    on_you_successful: int = None
+
+
+@dataclass
+class FinancesData:
+    total_income: int = None
+    race_position: int = None
+    qualifying_position: int = None
+    sponsor: int = None
+    driver_salary: int = None
+    staff_salary: int = None
+    facility_cost: int = None
+    tyre_cost: int = None
+
+
+@dataclass
+class CarPartData:
+    chassis: int = None
+    engine: int = None
+    front_wing: int = None
+    rear_wing: int = None
+    underbody: int = None
+    sidepods: int = None
+    cooling: int = None
+    gearbox: int = None
+    brakes: int = None
+    suspension: int = None
+    electronics: int = None
+
+
+@dataclass
+class LapData:
+    lap: int = None
+    boost: bool = None
+    time: datetime.timedelta = None
+    position: int = None
+    tyres: str = None
+    weather: str = None
+    temperature: int = None
+    humidity: int = None
+    events: str = None
+
+
+@dataclass
+class RaceAnalysisData:
+    track_name: str = None
+    track_id: str = None
+    season: int = None
+    race: int = None
+    group: str = None
+    practice: list[PracticeLapDataClass] = field(default_factory=list)
+    qualifying1: QualifyingData = QualifyingData()
+    qualifying2: QualifyingData = QualifyingData()
+    setup_race: SetupDataClass = None
+    risk_race: RaceRiskData = None
+    driver_stats: DriverDataClass = None
+    driver_change: DriverDataClass = None
+    energy: EnergyDataClass = None
+    position_start: int = None
+    position_finish: int = None
+    ccp: CcpDataClass = None
+    tyre_supplier: TyreSupplierDataClass = None
+    weather: tuple[WeatherForecastData, WeatherForecastData, WeatherForecastData, WeatherForecastData] = field(
+        default_factory=tuple)
+    pitstops: list[PitStopData] = field(default_factory=list)
+    problems: list[TechProblemData] = field(default_factory=list)
+    tyre_condition_finish: int = None
+    fuel_start: int = None
+    fuel_left_finish: int = None
+    overtaking: OvertakingData = None
+    finances: FinancesData = None
+    car_part_levels: CarPartData = None
+    car_part_wear_start: CarPartData = None
+    car_part_wear_finish: CarPartData = None
+    lap_chart: list[LapData] = field(default_factory=list)
+    notes: str = None
+
+
+class GproScraper:
+    def __init__(self, username: str, password: str):
+        self.username = username
+        self.password = password
+        self.session = self._session_login()
+
+    def _session_login(self):
+        return connection_init(self.username, self.password)
+
+    def parse_race_analysis(self, season: int = None, race: int = None) -> RaceAnalysisData:
+        """Download and parse the latest race analysis"""
+        return parse_race_analysis(self.session, season, race)
+
+
+def connection_init(username: str, password: str) -> requests.Session:
+    """Initialize http session and log in"""
     session = requests.Session()
     login_url = "https://gpro.net/gb/Login.asp"
     login_data = {'textLogin': username,
@@ -32,59 +237,76 @@ def connection_init(username, password):
         result = session.post(login_url, data=login_data, headers=login_headers,
                               allow_redirects=False)
         assert result.status_code == 302
-    except AssertionError:
+    except RuntimeError:
         print("Login failed. Response code: " + str(result.status_code))
     # print(result.status_code)
     # print(result.text)
     return session
 
 
-def parse_race_analysis(session):
+def parse_race_analysis(session, season: int = None, race: int = None):
     """
     Loads and parses the race analysis page
-    :param session: a logged in session
-    :return: dict containing the parsed data
+    :param session: a logged-in session
+    :param season: the season of the race to be parsed
+    :param race: the race number of the race to be parsed
+    :return: RaceAnalysisData containing the parsed data
     """
-    html_page = session.get("https://gpro.net/gb/RaceAnalysis.asp")
+    if season is None and race is None:
+        html_page = session.get("https://gpro.net/gb/RaceAnalysis.asp")
+    elif season is not None and race is not None:
+        html_page = session.get(f"https://gpro.net/gb/RaceAnalysis.asp?SR={season},{race}")
+    else:
+        raise ValueError("season and race must either both be provided or neither.")
     parsed_page = BeautifulSoup(html_page.text, 'html.parser')
 
-    # create regex to pull season, race number and league
+    # check for race participation and error if not participated
+    if parsed_page.select_one(".center").text is f"You did not participate in Season {season}, Race {race}":
+        raise ValueError()
+
+    data = RaceAnalysisData()
+    # populate instance with basic info
+
+    data.track_name = parsed_page.select_one(".block > a:nth-of-type(2)").text
+    data.track_id = re.search(r"id=(\d*)", parsed_page.select_one(
+        ".block > a:nth-of-type(2)").attrs.get("href")).group(1)
+    # pull season, race number and group with regex
     regex = re.compile(r"Season (\d*) - Race (\d*) \((\w* - \d*)\)")
     regex.search(parsed_page.select_one(".block").text).group(1)
+    data.season = regex.search(parsed_page.select_one(".block").text).group(1)
+    data.race = regex.search(parsed_page.select_one(".block").text).group(2)
+    data.group = regex.search(parsed_page.select_one(".block").text).group(3)
 
-    # populate dict with basic info
-    data = {
-        "track_name": parsed_page.select_one(".block > a:nth-of-type(2)").text,
-        "track_id": re.search(r"id=(\d*)", parsed_page.select_one(
-            ".block > a:nth-of-type(2)").attrs.get("href")).group(1),
-        "season": regex.search(parsed_page.select_one(".block").text).group(1),
-        "race": regex.search(parsed_page.select_one(".block").text).group(2),
-        "league": regex.search(parsed_page.select_one(".block").text).group(3),
-        "setups": _parse_race_analysis_setups(parsed_page)
-    }
+    (data.qualifying1.setup, data.qualifying2.setup, data.setup_race) = _parse_race_analysis_setups(parsed_page)
+
     return data
 
 
-def _parse_race_analysis_setups(parsed_page: BeautifulSoup):
+def _parse_race_analysis_setups(parsed_page: BeautifulSoup) -> tuple[SetupDataClass, SetupDataClass, SetupDataClass]:
     """
     parse the Setups used table on the Race analysis page
     :param parsed_page: BeautifulSoup object for the Race analysis page
-    :return: dict containing the setups and tyres used
+    :return: tuple of SetupDataClass containing the setups and tyres used
     """
     setup_table = parsed_page.find("th", text="Setups used").parent.parent
-    setups = {
+    setups_dict = {
         "Q1": [ele.text.strip() for ele in setup_table.select_one("tr:nth-of-type(3)").find_all("td")],
         "Q2": [ele.text.strip() for ele in setup_table.select_one("tr:nth-of-type(4)").find_all("td")],
         "Race": [ele.text.strip() for ele in setup_table.select_one("tr:nth-of-type(5)").find_all("td")]
     }
     # clean up the lists and extract tyres
-    setups["Q1"].pop(0)
-    setups["Q1_tyres"] = setups["Q1"].pop()
-    setups["Q2"].pop(0)
-    setups["Q2_tyres"] = setups["Q2"].pop()
-    setups["Race"].pop(0)
-    setups["Race_tyres"] = setups["Race"].pop()
-    return setups
+    setups_dict["Q1"].pop(0)
+    setups_dict["Q1_tyres"] = setups_dict["Q1"].pop()
+    setups_dict["Q2"].pop(0)
+    setups_dict["Q2_tyres"] = setups_dict["Q2"].pop()
+    setups_dict["Race"].pop(0)
+    setups_dict["Race_tyres"] = setups_dict["Race"].pop()
+
+    setup_q1 = SetupDataClass(setups_dict["Q1_tyres"], *setups_dict["Q1"])
+    setup_q2 = SetupDataClass(setups_dict["Q2_tyres"], *setups_dict["Q2"])
+    setup_race = SetupDataClass(setups_dict["Race_tyres"], *setups_dict["Race"])
+
+    return setup_q1, setup_q2, setup_race
 
 
 def terminal_login():
@@ -103,6 +325,7 @@ def main():
     session = terminal_login()
     parsed_race = parse_race_analysis(session)
     print(parsed_race)
+    print(asdict(parsed_race))
 
 
 if __name__ == "__main__":
