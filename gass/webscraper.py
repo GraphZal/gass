@@ -244,6 +244,10 @@ def connection_init(username: str, password: str) -> requests.Session:
     return session
 
 
+class NotRacedError(Exception):
+    pass
+
+
 def parse_race_analysis(session, season: int = None, race: int = None):
     """
     Loads and parses the race analysis page
@@ -262,7 +266,7 @@ def parse_race_analysis(session, season: int = None, race: int = None):
 
     # check for race participation and error if not participated
     if parsed_page.select_one(".center").text is f"You did not participate in Season {season}, Race {race}":
-        raise ValueError()
+        raise NotRacedError("You did not participate in Season {season}, Race {race}")
 
     data = RaceAnalysisData()
     # populate instance with basic info
