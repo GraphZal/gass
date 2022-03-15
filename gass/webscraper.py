@@ -273,14 +273,14 @@ def parse_race_analysis(session, season: int = None, race: int = None):
     data = RaceAnalysisData()
     # populate instance with basic info
 
-    data.track_name = parsed_page.select_one(".block > a:nth-of-type(2)").text
+    data.track_name = parsed_page.select_one(".block > a:nth-child(7)").text
     data.track_id = re.search(r"id=(\d*)", parsed_page.select_one(
-        ".block > a:nth-of-type(2)").attrs.get("href")).group(1)
+        ".block > a:nth-child(7)").attrs.get("href")).group(1)
     # pull season, race number and group with regex
     regex = re.compile(r"Season (\d*) - Race (\d*) \((\w* - \d*)\)")
     regex.search(parsed_page.select_one(".block").text).group(1)
-    data.season = regex.search(parsed_page.select_one(".block").text).group(1)
-    data.race = regex.search(parsed_page.select_one(".block").text).group(2)
+    data.season = int(regex.search(parsed_page.select_one(".block").text).group(1))
+    data.race = int(regex.search(parsed_page.select_one(".block").text).group(2))
     data.group = regex.search(parsed_page.select_one(".block").text).group(3)
 
     (data.qualifying1.setup, data.qualifying2.setup, data.setup_race) = _parse_race_analysis_setups(parsed_page)
