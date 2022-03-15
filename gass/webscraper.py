@@ -218,6 +218,7 @@ class GproScraper:
         return parse_race_analysis(self.session, season, race)
 
     def parse_all_race_analysis(self) -> dict[tuple[int, int], RaceAnalysisData]:
+        """Parse the race analysis page for all races"""
         most_recent = self.parse_race_analysis()
         results = {(most_recent.season, most_recent.race): most_recent}
         for s in range(1, most_recent.season + 1):
@@ -289,7 +290,6 @@ def parse_race_analysis(session, season: int = None, race: int = None):
 
     data = RaceAnalysisData()
     # populate instance with basic info
-
     data.track_name = parsed_page.select_one(".block > a:nth-child(7)").text
     data.track_id = re.search(r"id=(\d*)", parsed_page.select_one(
         ".block > a:nth-child(7)").attrs.get("href")).group(1)
@@ -300,6 +300,7 @@ def parse_race_analysis(session, season: int = None, race: int = None):
     data.race = int(regex.search(parsed_page.select_one(".block").text).group(2))
     data.group = regex.search(parsed_page.select_one(".block").text).group(3)
 
+    # parse setups
     (data.qualifying1.setup, data.qualifying2.setup, data.setup_race) = _parse_race_analysis_setups(parsed_page)
 
     # parse driver
@@ -359,8 +360,7 @@ def _parse_race_analysis_driver(parsed_page: BeautifulSoup) -> tuple[DriverDataC
 
 def terminal_login():
     """
-    Requests username and password on the command line, creates a session
-    and logs in.
+    Requests username and password on the command line, creates a logged-in scraper instance
     """
     username = input("GPRO-Username:")
     password = getpass("GPRO-Password:")
@@ -375,10 +375,10 @@ def manual_test_parse_all_race_analysis():
 
 def main():
     """Main method for manual testing purposes."""
-    manual_test_parse_single_race_analysis(54, 14)
+    manual_test_parse_single_race_analysis()
 
 
-def manual_test_parse_single_race_analysis(season, race):
+def manual_test_parse_single_race_analysis(season=None, race=None):
     scraper = terminal_login()
     try:
         parsed_race = scraper.parse_race_analysis(season, race)
