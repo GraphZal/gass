@@ -306,6 +306,9 @@ def parse_race_analysis(session, season: int = None, race: int = None):
     # parse driver
     (data.driver_stats, data.driver_change) = _parse_race_analysis_driver(parsed_page)
 
+    # parse car parts data
+    (data.car_part_levels, data.car_part_wear_start, data.car_part_wear_finish) = _parse_race_analysis_car_parts(parsed_page)
+
     return data
 
 
@@ -356,6 +359,24 @@ def _parse_race_analysis_driver(parsed_page: BeautifulSoup) -> tuple[DriverDataC
     except AttributeError:
         driver_changes = None
     return driver_stats, driver_changes
+
+
+def _parse_race_analysis_car_parts(parsed_page: BeautifulSoup) -> tuple[CarPartData, CarPartData, CarPartData]:
+    """
+    parse the car part level, start wear and finish wear of the race analysis page
+    :param parsed_page: BeautifulSoup object for the Race analysis page
+    :return: tuple of 3 CarPartData instances, denoting level, start wear and finish wear
+    """
+    car_table = parsed_page.find("th", text="Car parts level").parent.parent
+    car_level_list = [int(ele.text.strip()) for ele in car_table.select_one("tr:nth-of-type(3)").find_all("td")]
+    car_level_data = CarPartData(*car_level_list)
+    start_wear_list = [int(ele.text.strip("% \n)")) for ele in car_table.select_one("tr:nth-of-type(5)").find_all("td")]
+    start_wear = CarPartData(*start_wear_list)
+    finish_wear_list = [int(ele.text.strip("% \n)")) for ele in
+                        car_table.select_one("tr:nth-of-type(7)").find_all("td")]
+    finish_wear = CarPartData(*finish_wear_list)
+
+    return car_level_data, start_wear, finish_wear
 
 
 def terminal_login():
