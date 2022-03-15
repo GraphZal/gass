@@ -339,18 +339,26 @@ def terminal_login():
     """
     username = input("GPRO-Username:")
     password = getpass("GPRO-Password:")
-    session = connection_init(username, password)
-    return session
+    scraper = GproScraper(username, password)
+    return scraper
+
+
+def manual_test_parse_all_race_analysis():
+    scraper = terminal_login()
+    results = scraper.parse_all_race_analysis()
 
 
 def main():
     """Main method for manual testing purposes."""
-    session = terminal_login()
+    manual_test_parse_single_race_analysis(54, 14)
+
+
+def manual_test_parse_single_race_analysis(season, race):
+    scraper = terminal_login()
     try:
-        parsed_race = parse_race_analysis(session,81,8)
+        parsed_race = scraper.parse_race_analysis(season, race)
     except NotRacedError as e:
-        print(e)
-        return
+        raise
     print(parsed_race)
     print(asdict(parsed_race))
 
