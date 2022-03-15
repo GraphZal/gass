@@ -327,6 +327,10 @@ def _parse_race_analysis_setups(parsed_page: BeautifulSoup) -> tuple[SetupDataCl
     setups_dict["Q2_tyres"] = setups_dict["Q2"].pop()
     setups_dict["Race"].pop(0)
     setups_dict["Race_tyres"] = setups_dict["Race"].pop()
+    #type conversion to int
+    setups_dict["Q1"] = [int(e) for e in setups_dict["Q1"]]
+    setups_dict["Q2"] = [int(e) for e in setups_dict["Q2"]]
+    setups_dict["Race"] = [int(e) for e in setups_dict["Race"]]
 
     setup_q1 = SetupDataClass(setups_dict["Q1_tyres"], *setups_dict["Q1"])
     setup_q2 = SetupDataClass(setups_dict["Q2_tyres"], *setups_dict["Q2"])
