@@ -331,7 +331,7 @@ def _parse_race_analysis_setups(parsed_page: BeautifulSoup) -> tuple[SetupDataCl
     setups_dict["Q2_tyres"] = setups_dict["Q2"].pop()
     setups_dict["Race"].pop(0)
     setups_dict["Race_tyres"] = setups_dict["Race"].pop()
-    #type conversion to int
+    # type conversion to int
     setups_dict["Q1"] = [int(e) for e in setups_dict["Q1"]]
     setups_dict["Q2"] = [int(e) for e in setups_dict["Q2"]]
     setups_dict["Race"] = [int(e) for e in setups_dict["Race"]]
@@ -351,10 +351,11 @@ def _parse_race_analysis_driver(parsed_page: BeautifulSoup) -> tuple[DriverDataC
     """
     driver_table = parsed_page.find("th", text="Driver attributes").parent.parent
     driver_stat_list = [ele.text.strip() for ele in driver_table.select_one("tr:nth-of-type(3)").find_all("td")]
-    driver_stat_list = [driver_stat_list[0]]+[int(e) for e in driver_stat_list[1:]]
+    driver_stat_list = [driver_stat_list[0]] + [int(e) for e in driver_stat_list[1:]]
     driver_stats = DriverDataClass(*driver_stat_list)
     try:
-        driver_change_list = [int(ele.text.strip("() \n")) for ele in driver_table.select_one("tr:nth-of-type(4)").find_all("td")]
+        driver_change_list = [int(ele.text.strip("() \n")) for ele in
+                              driver_table.select_one("tr:nth-of-type(4)").find_all("td")]
         driver_changes = DriverDataClass(driver_stat_list[0], *driver_change_list)
     except AttributeError:
         driver_changes = None
