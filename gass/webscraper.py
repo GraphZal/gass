@@ -207,6 +207,8 @@ class GproScraper:
         self.username = username
         self.password = password
         self.session = self._session_login()
+        logging.basicConfig()
+        self.logger = logging.getLogger()
 
     def _session_login(self):
         return connection_init(self.username, self.password)
@@ -214,6 +216,21 @@ class GproScraper:
     def parse_race_analysis(self, season: int = None, race: int = None) -> RaceAnalysisData:
         """Download and parse the latest race analysis"""
         return parse_race_analysis(self.session, season, race)
+
+    def parse_all_race_analysis(self) -> dict[tuple[int, int], RaceAnalysisData]:
+        most_recent = self.parse_race_analysis()
+        results = {(most_recent.season, most_recent.race): most_recent}
+        for s in range(1, most_recent.season + 1):
+            for r in range(1, 17):
+                try:
+                    data = self.parse_race_analysis(s, r)
+                    results[(s, r)] = data
+                    self.logger.log(logging.DEBUG, f"scraped Season {s}, Race {r} successfully.")
+                except NotRacedError:
+                    self.logger.log(logging.DEBUG, f"Season {s}, Race {r} was not raced. Skipping.")
+                    continue
+        self.logger.log(logging.DEBUG, f"successfully scraped {len(results)} races.")
+        return results
 
 
 def connection_init(username: str, password: str) -> requests.Session:
