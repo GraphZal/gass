@@ -302,6 +302,9 @@ def parse_race_analysis(session, season: int = None, race: int = None):
 
     (data.qualifying1.setup, data.qualifying2.setup, data.setup_race) = _parse_race_analysis_setups(parsed_page)
 
+    # parse driver
+    (data.driver_stats, data.driver_change) = _parse_race_analysis_driver(parsed_page)
+
     return data
 
 
@@ -330,6 +333,24 @@ def _parse_race_analysis_setups(parsed_page: BeautifulSoup) -> tuple[SetupDataCl
     setup_race = SetupDataClass(setups_dict["Race_tyres"], *setups_dict["Race"])
 
     return setup_q1, setup_q2, setup_race
+
+
+def _parse_race_analysis_driver(parsed_page: BeautifulSoup) -> tuple[DriverDataClass, DriverDataClass]:
+    """
+    parse the driver stats and stat changes on the race analysis page
+    :param parsed_page: BeautifulSoup object for the Race analysis page
+    :return: tuple of 2 DriverDataClass instances denoting stats and stat changes
+    """
+    driver_table = parsed_page.find("th", text="Driver attributes").parent.parent
+    driver_stat_list = [ele.text.strip() for ele in driver_table.select_one("tr:nth-of-type(3)").find_all("td")]
+    driver_stat_list = [driver_stat_list[0]]+[int(e) for e in driver_stat_list[1:]]
+    driver_stats = DriverDataClass(*driver_stat_list)
+    try:
+        driver_change_list = [int(ele.text.strip("() \n")) for ele in driver_table.select_one("tr:nth-of-type(4)").find_all("td")]
+        driver_changes = DriverDataClass(driver_stat_list[0], *driver_change_list)
+    except AttributeError:
+        driver_changes = None
+    return driver_stats, driver_changes
 
 
 def terminal_login():
