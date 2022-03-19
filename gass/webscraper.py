@@ -2,6 +2,8 @@
 Provides methods to establish a connection to the GPRO website as well as
 scrape and parse its contents.
 """
+import json
+import os
 from dataclasses import dataclass, field, asdict
 import datetime
 import logging
@@ -333,7 +335,6 @@ def parse_race_analysis(session, season: int = None, race: int = None):
     forecast_regex = re.compile(
         r"Temp:\s*(\d*)°\s*-\s*(\d*)°\s*Humidity:\s*(\d*)%\s*-\s*(\d*)%\s*Rain\s*probability:\s*(\d*)%\s*-\s*(\d*)%"
     )
-    print(weather_table.select_one("tr:nth-of-type(6)>td:nth-of-type(1)").text)
     match1 = forecast_regex.search(weather_table.select_one("tr:nth-of-type(6)>td:nth-of-type(1)").text)
     forecast1 = WeatherForecastData(temperature_min=match1.group(1), temperature_max=match1.group(2),
                                     humidity_min=match1.group(3), humidity_max=match1.group(4),
@@ -442,7 +443,7 @@ def manual_test_parse_all_race_analysis():
 
 def main():
     """Main method for manual testing purposes."""
-    manual_test_parse_single_race_analysis()
+    manual_test_dump_json_file()
 
 
 def manual_test_parse_single_race_analysis(season=None, race=None):
@@ -453,6 +454,20 @@ def manual_test_parse_single_race_analysis(season=None, race=None):
         raise
     print(parsed_race)
     print(asdict(parsed_race))
+
+def manual_test_dump_json_file(season=None, race=None):
+    scraper = terminal_login()
+    try:
+        parsed_race = scraper.parse_race_analysis(season, race)
+        dump_json_to_file(parsed_race, f"./scraped_data/race_analysis_{parsed_race.season}-{parsed_race.race}.json")
+    except NotRacedError:
+        raise
+
+
+def dump_json_to_file(data: RaceAnalysisData, filename: str):
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+    with open(filename, "w") as file:
+        file.write(json.dumps(asdict(data), indent=4))
 
 
 if __name__ == "__main__":
