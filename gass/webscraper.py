@@ -100,7 +100,8 @@ class WeatherForecastData:
     temperature_max: int = None
     humidity_min: int = None
     humidity_max: int = None
-    rain_probability: int = None
+    rain_min: int = None
+    rain_max: int = None
 
 
 @dataclass
@@ -307,7 +308,48 @@ def parse_race_analysis(session, season: int = None, race: int = None):
     (data.driver_stats, data.driver_change) = _parse_race_analysis_driver(parsed_page)
 
     # parse car parts data
-    (data.car_part_levels, data.car_part_wear_start, data.car_part_wear_finish) = _parse_race_analysis_car_parts(parsed_page)
+    (data.car_part_levels, data.car_part_wear_start, data.car_part_wear_finish) = _parse_race_analysis_car_parts(
+        parsed_page)
+
+    # parse weather forecast
+    weather_table = parsed_page.find("th", text="Sessions weather").parent.parent
+    quali_weather_regex = re.compile(r"Temp: (\d*)°C\s*Humidity: (\d*)%")
+    # qualifying 1 weather
+    data.qualifying1.weather = weather_table.select_one("tr:nth-of-type(3) > td:nth-of-type(1) > img").attrs["title"]
+    data.qualifying1.temperature = int(quali_weather_regex.search(weather_table.select_one("tr:nth-of-type(3) > "
+                                                                                           "td:nth-of-type(1)"
+                                                                                           ).text).group(1))
+    data.qualifying1.humidity = int(quali_weather_regex.search(weather_table.select_one("tr:nth-of-type(3) > "
+                                                                                        "td:nth-of-type(1)"
+                                                                                        ).text).group(2))
+    # qualifying 2 weather
+    data.qualifying2.weather = weather_table.select_one("tr:nth-of-type(3) > td:nth-of-type(2) > img").attrs["title"]
+    data.qualifying2.temperature = int(
+        quali_weather_regex.search(weather_table.select_one("tr:nth-of-type(3) > td:nth-of-type(2)").text).group(1))
+    data.qualifying2.humidity = int(
+        quali_weather_regex.search(weather_table.select_one("tr:nth-of-type(3) > td:nth-of-type(2)").text).group(2))
+    # forecasts
+    forecast_regex = re.compile(
+        r"Temp:\s*(\d*)°\s*-\s*(\d*)°\s*Humidity:\s*(\d*)%\s*-\s*(\d*)%\s*Rain\s*probability:\s*(\d*)%\s*-\s*(\d*)%"
+    )
+    print(weather_table.select_one("tr:nth-of-type(6)>td:nth-of-type(1)").text)
+    match1 = forecast_regex.search(weather_table.select_one("tr:nth-of-type(6)>td:nth-of-type(1)").text)
+    forecast1 = WeatherForecastData(temperature_min=match1.group(1), temperature_max=match1.group(2),
+                                    humidity_min=match1.group(3), humidity_max=match1.group(4),
+                                    rain_min=match1.group(5), rain_max=match1.group(6))
+    match2 = forecast_regex.search(weather_table.select_one("tr:nth-of-type(6)>td:nth-of-type(2)").text)
+    forecast2 = WeatherForecastData(temperature_min=match2.group(1), temperature_max=match2.group(2),
+                                    humidity_min=match2.group(3), humidity_max=match2.group(4),
+                                    rain_min=match2.group(5), rain_max=match2.group(6))
+    match3 = forecast_regex.search(weather_table.select_one("tr:nth-of-type(8)>td:nth-of-type(1)").text)
+    forecast3 = WeatherForecastData(temperature_min=match3.group(1), temperature_max=match3.group(2),
+                                    humidity_min=match3.group(3), humidity_max=match3.group(4),
+                                    rain_min=match3.group(5), rain_max=match3.group(6))
+    match4 = forecast_regex.search(weather_table.select_one("tr:nth-of-type(8)>td:nth-of-type(2)").text)
+    forecast4 = WeatherForecastData(temperature_min=match4.group(1), temperature_max=match4.group(2),
+                                    humidity_min=match4.group(3), humidity_max=match4.group(4),
+                                    rain_min=match4.group(5), rain_max=match4.group(6))
+    data.weather = (forecast1, forecast2, forecast3, forecast4)
 
     return data
 
