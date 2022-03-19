@@ -53,7 +53,7 @@ class RaceRiskData:
     overtake: int = None
     defend: int = None
     clear: int = None
-    malfunct: int = None
+    malfunction: int = None
 
 
 @dataclass
@@ -287,7 +287,6 @@ def parse_race_analysis(session, season: int = None, race: int = None):
 
     if parsed_page.select_one(".center").text == f"You did not participate in Season {season}, Race {race}":
         raise NotRacedError(f"You did not participate in Season {season}, Race {race}")
-        return
 
     data = RaceAnalysisData()
     # populate instance with basic info
@@ -313,21 +312,23 @@ def parse_race_analysis(session, season: int = None, race: int = None):
 
     # parse weather forecast
     weather_table = parsed_page.find("th", text="Sessions weather").parent.parent
-    quali_weather_regex = re.compile(r"Temp: (\d*)°C\s*Humidity: (\d*)%")
+    qualifying_weather_regex = re.compile(r"Temp: (\d*)°C\s*Humidity: (\d*)%")
     # qualifying 1 weather
     data.qualifying1.weather = weather_table.select_one("tr:nth-of-type(3) > td:nth-of-type(1) > img").attrs["title"]
-    data.qualifying1.temperature = int(quali_weather_regex.search(weather_table.select_one("tr:nth-of-type(3) > "
-                                                                                           "td:nth-of-type(1)"
-                                                                                           ).text).group(1))
-    data.qualifying1.humidity = int(quali_weather_regex.search(weather_table.select_one("tr:nth-of-type(3) > "
-                                                                                        "td:nth-of-type(1)"
-                                                                                        ).text).group(2))
+    data.qualifying1.temperature = int(qualifying_weather_regex.search(weather_table.select_one("tr:nth-of-type(3) > "
+                                                                                                "td:nth-of-type(1)"
+                                                                                                ).text).group(1))
+    data.qualifying1.humidity = int(qualifying_weather_regex.search(weather_table.select_one("tr:nth-of-type(3) > "
+                                                                                             "td:nth-of-type(1)"
+                                                                                             ).text).group(2))
     # qualifying 2 weather
     data.qualifying2.weather = weather_table.select_one("tr:nth-of-type(3) > td:nth-of-type(2) > img").attrs["title"]
     data.qualifying2.temperature = int(
-        quali_weather_regex.search(weather_table.select_one("tr:nth-of-type(3) > td:nth-of-type(2)").text).group(1))
+        qualifying_weather_regex.search(weather_table.select_one("tr:nth-of-type(3) > td:nth-of-type(2)").text).group(
+            1))
     data.qualifying2.humidity = int(
-        quali_weather_regex.search(weather_table.select_one("tr:nth-of-type(3) > td:nth-of-type(2)").text).group(2))
+        qualifying_weather_regex.search(weather_table.select_one("tr:nth-of-type(3) > td:nth-of-type(2)").text).group(
+            2))
     # forecasts
     forecast_regex = re.compile(
         r"Temp:\s*(\d*)°\s*-\s*(\d*)°\s*Humidity:\s*(\d*)%\s*-\s*(\d*)%\s*Rain\s*probability:\s*(\d*)%\s*-\s*(\d*)%"
@@ -392,13 +393,14 @@ def _parse_race_analysis_driver(parsed_page: BeautifulSoup) -> tuple[DriverDataC
     :return: tuple of 2 DriverDataClass instances denoting stats and stat changes
     """
     driver_table = parsed_page.find("th", text="Driver attributes").parent.parent
-    driver_stat_list = [ele.text.strip() for ele in driver_table.select_one("tr:nth-of-type(3)").find_all("td")]
-    driver_stat_list = [driver_stat_list[0]] + [int(e) for e in driver_stat_list[1:]]
-    driver_stats = DriverDataClass(*driver_stat_list)
+    driver_info_list = [ele.text.strip() for ele in driver_table.select_one("tr:nth-of-type(3)").find_all("td")]
+    driver_name = driver_info_list[0]
+    driver_stat_list = [int(e) for e in driver_info_list[1:]]
+    driver_stats = DriverDataClass(driver_name, *driver_stat_list)
     try:
         driver_change_list = [int(ele.text.strip("() \n")) for ele in
                               driver_table.select_one("tr:nth-of-type(4)").find_all("td")]
-        driver_changes = DriverDataClass(driver_stat_list[0], *driver_change_list)
+        driver_changes = DriverDataClass(driver_name, *driver_change_list)
     except AttributeError:
         driver_changes = None
     return driver_stats, driver_changes
@@ -435,6 +437,7 @@ def terminal_login():
 def manual_test_parse_all_race_analysis():
     scraper = terminal_login()
     results = scraper.parse_all_race_analysis()
+    print(len(results))
 
 
 def main():
@@ -446,7 +449,7 @@ def manual_test_parse_single_race_analysis(season=None, race=None):
     scraper = terminal_login()
     try:
         parsed_race = scraper.parse_race_analysis(season, race)
-    except NotRacedError as e:
+    except NotRacedError:
         raise
     print(parsed_race)
     print(asdict(parsed_race))
