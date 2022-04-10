@@ -178,8 +178,8 @@ class RaceAnalysisData:
     race: int = None
     group: str = None
     practice: list[PracticeLapDataClass] = field(default_factory=list)
-    qualifying1: QualifyingData = QualifyingData()
-    qualifying2: QualifyingData = QualifyingData()
+    qualifying1: QualifyingData = field(default_factory=QualifyingData)
+    qualifying2: QualifyingData = field(default_factory=QualifyingData)
     setup_race: SetupDataClass = None
     risk_race: RaceRiskData = None
     driver_stats: DriverDataClass = None
@@ -454,6 +454,7 @@ def manual_test_parse_single_race_analysis(season=None, race=None):
         raise
     print(parsed_race)
     print(asdict(parsed_race))
+
 
 def manual_test_dump_json_file(season=None, race=None):
     scraper = terminal_login()
