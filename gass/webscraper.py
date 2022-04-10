@@ -222,7 +222,7 @@ class GproScraper:
                       'token': '',
                       'Logon': 'Login',
                       'LogonFake': 'Sign+in'}
-        login_headers = {'User-Agent': 'Mozilla/5.0'}
+        login_headers = {'User-Agent': 'GASS/0.0.1 by Jens Jaeschke'}
         session.headers.update(login_headers)
         logging.basicConfig()
         logging.getLogger().setLevel(logging.DEBUG)
