@@ -207,153 +207,158 @@ class RaceAnalysisData:
 
 class GproScraper:
     def __init__(self, username: str, password: str):
-        self.username = username
-        self.password = password
-        self.session = self._session_login()
+        self.username: str = username
+        self.password: str = password
+        self.session: requests.Session = self._session_login()
+        self.saved_data: dict[(int, int), RaceAnalysisData] = dict()
         logging.basicConfig()
         self.logger = logging.getLogger()
 
     def _session_login(self):
-        return connection_init(self.username, self.password)
+        session = requests.Session()
+        login_url = "https://gpro.net/gb/Login.asp"
+        login_data = {'textLogin': self.username,
+                      'textPassword': self.password,
+                      'token': '',
+                      'Logon': 'Login',
+                      'LogonFake': 'Sign+in'}
+        login_headers = {'User-Agent': 'Mozilla/5.0'}
+        session.headers.update(login_headers)
+        logging.basicConfig()
+        logging.getLogger().setLevel(logging.DEBUG)
+        requests_log = logging.getLogger("urllib3")
+        requests_log.setLevel(logging.DEBUG)
+        requests_log.propagate = True
+        result = session.get(login_url)
+        try:
+            result = session.post(login_url, data=login_data, headers=login_headers,
+                                  allow_redirects=False)
+            assert result.status_code == 302
+        except RuntimeError:
+            print("Login failed. Response code: " + str(result.status_code))
+        # print(result.status_code)
+        # print(result.text)
+        return session
+
+    def get_race_analysis(self, season: int = None, race: int=None) -> RaceAnalysisData:
+        try:
+            data = self.saved_data[(season,race)]
+        except KeyError:
+            data = self.parse_race_analysis(season, race)
+        return data
 
     def parse_race_analysis(self, season: int = None, race: int = None) -> RaceAnalysisData:
-        """Download and parse the latest race analysis"""
-        return parse_race_analysis(self.session, season, race)
+        """Download and parse the race analysis page for the specified race, defaults to most recent"""
+
+        parsed_page = self.load_race_analysis(season, race)
+
+        # check for race participation and error if not participated
+        if parsed_page.select_one(".center").text == f"You did not participate in Season {season}, Race {race}":
+            raise NotRacedError(f"You did not participate in Season {season}, Race {race}")
+        data = RaceAnalysisData()
+        # populate instance with basic info
+        data.track_name = parsed_page.select_one(".block > a:nth-child(7)").text
+        data.track_id = re.search(r"id=(\d*)", parsed_page.select_one(
+            ".block > a:nth-child(7)").attrs.get("href")).group(1)
+        # pull season, race number and group with regex
+        regex = re.compile(r"Season (\d*) - Race (\d*) \((\w* - \d*)\)")
+        regex.search(parsed_page.select_one(".block").text).group(1)
+        data.season = int(regex.search(parsed_page.select_one(".block").text).group(1))
+        data.race = int(regex.search(parsed_page.select_one(".block").text).group(2))
+        data.group = regex.search(parsed_page.select_one(".block").text).group(3)
+        # parse setups
+        (data.qualifying1.setup, data.qualifying2.setup, data.setup_race) = _parse_race_analysis_setups(parsed_page)
+        # parse driver
+        (data.driver_stats, data.driver_change) = _parse_race_analysis_driver(parsed_page)
+        # parse car parts data_dict
+        (data.car_part_levels, data.car_part_wear_start, data.car_part_wear_finish) = _parse_race_analysis_car_parts(
+            parsed_page)
+        # parse weather forecast
+        weather_table = parsed_page.find("th", text="Sessions weather").parent.parent
+        qualifying_weather_regex = re.compile(r"Temp: (\d*)°C\s*Humidity: (\d*)%")
+        # qualifying 1 weather
+        data.qualifying1.weather = weather_table.select_one("tr:nth-of-type(3) > td:nth-of-type(1) > img").attrs["title"]
+        data.qualifying1.temperature = int(qualifying_weather_regex.search(weather_table.select_one("tr:nth-of-type(3) > "
+                                                                                                    "td:nth-of-type(1)"
+                                                                                                    ).text).group(1))
+        data.qualifying1.humidity = int(qualifying_weather_regex.search(weather_table.select_one("tr:nth-of-type(3) > "
+                                                                                                 "td:nth-of-type(1)"
+                                                                                                 ).text).group(2))
+        # qualifying 2 weather
+        data.qualifying2.weather = weather_table.select_one("tr:nth-of-type(3) > td:nth-of-type(2) > img").attrs["title"]
+        data.qualifying2.temperature = int(
+            qualifying_weather_regex.search(weather_table.select_one("tr:nth-of-type(3) > td:nth-of-type(2)").text).group(
+                1))
+        data.qualifying2.humidity = int(
+            qualifying_weather_regex.search(weather_table.select_one("tr:nth-of-type(3) > td:nth-of-type(2)").text).group(
+                2))
+        # forecasts
+        forecast_regex = re.compile(
+            r"Temp:\s*(\d*)°\s*-\s*(\d*)°\s*Humidity:\s*(\d*)%\s*-\s*(\d*)%\s*Rain\s*probability:\s*(\d*)%\s*-?\s*(\d*)%?"
+        )
+        match1 = forecast_regex.search(weather_table.select_one("tr:nth-of-type(6)>td:nth-of-type(1)").text)
+        forecast1 = WeatherForecastData(temperature_min=match1.group(1), temperature_max=match1.group(2),
+                                        humidity_min=match1.group(3), humidity_max=match1.group(4),
+                                        rain_min=match1.group(5),
+                                        rain_max=match1.group(6) if match1.group(6) else match1.group(5))
+        match2 = forecast_regex.search(weather_table.select_one("tr:nth-of-type(6)>td:nth-of-type(2)").text)
+        forecast2 = WeatherForecastData(temperature_min=match2.group(1), temperature_max=match2.group(2),
+                                        humidity_min=match2.group(3), humidity_max=match2.group(4),
+                                        rain_min=match2.group(5),
+                                        rain_max=match2.group(6) if match2.group(6) else match2.group(5))
+        match3 = forecast_regex.search(weather_table.select_one("tr:nth-of-type(8)>td:nth-of-type(1)").text)
+        forecast3 = WeatherForecastData(temperature_min=match3.group(1), temperature_max=match3.group(2),
+                                        humidity_min=match3.group(3), humidity_max=match3.group(4),
+                                        rain_min=match3.group(5),
+                                        rain_max=match3.group(6) if match3.group(6) else match3.group(5))
+        match4 = forecast_regex.search(weather_table.select_one("tr:nth-of-type(8)>td:nth-of-type(2)").text)
+        forecast4 = WeatherForecastData(temperature_min=match4.group(1), temperature_max=match4.group(2),
+                                        humidity_min=match4.group(3), humidity_max=match4.group(4),
+                                        rain_min=match4.group(5),
+                                        rain_max=match4.group(6) if match4.group(6) else match4.group(5))
+        data.weather = (forecast1, forecast2, forecast3, forecast4)
+        self.saved_data[(season,race)] = data
+        return data
+
+    def load_race_analysis(self, season, race):
+        """load the race analysis of the specified race"""
+        if season is None and race is None:
+            html_page = self.session.get("https://gpro.net/gb/RaceAnalysis.asp")
+
+        elif season is not None and race is not None:
+            html_page = self.session.get(f"https://gpro.net/gb/RaceAnalysis.asp?SR={season},{race}")
+
+        else:
+            raise ValueError("season and race must either both be provided or neither.")
+        parsed_page = BeautifulSoup(html_page.text, 'html.parser')
+        return parsed_page
+
+    def parse_season_race_analysis(self, season: int = None):
+        most_recent = self.parse_race_analysis()
+        results = dict()
+        for r in range(1, 18):
+            try:
+                data = self.parse_race_analysis(season, r)
+                results[(season, r)] = data
+                self.logger.log(logging.DEBUG, f"scraped Season {season}, Race {r} successfully.")
+            except NotRacedError:
+                self.logger.log(logging.DEBUG, f"Season {season}, Race {r} was not raced. Skipping.")
+                continue
+        self.logger.log(logging.DEBUG, f"successfully scraped {len(results)} races in season {season}.")
+        return results
 
     def parse_all_race_analysis(self) -> dict[tuple[int, int], RaceAnalysisData]:
         """Parse the race analysis page for all races"""
         most_recent = self.parse_race_analysis()
-        results = {(most_recent.season, most_recent.race): most_recent}
+        results = dict()
         for s in range(1, most_recent.season + 1):
-            for r in range(1, 17):
-                try:
-                    data = self.parse_race_analysis(s, r)
-                    results[(s, r)] = data
-                    self.logger.log(logging.DEBUG, f"scraped Season {s}, Race {r} successfully.")
-                except NotRacedError:
-                    self.logger.log(logging.DEBUG, f"Season {s}, Race {r} was not raced. Skipping.")
-                    continue
-        self.logger.log(logging.DEBUG, f"successfully scraped {len(results)} races.")
+            results.update(self.parse_season_race_analysis(s))
+        self.logger.log(logging.DEBUG, f"successfully scraped {len(results)} races in total.")
         return results
-
-
-def connection_init(username: str, password: str) -> requests.Session:
-    """Initialize http session and log in"""
-    session = requests.Session()
-    login_url = "https://gpro.net/gb/Login.asp"
-    login_data = {'textLogin': username,
-                  'textPassword': password,
-                  'token': '',
-                  'Logon': 'Login',
-                  'LogonFake': 'Sign+in'}
-    login_headers = {'User-Agent': 'Mozilla/5.0'}
-    session.headers.update(login_headers)
-    logging.basicConfig()
-    logging.getLogger().setLevel(logging.DEBUG)
-    requests_log = logging.getLogger("urllib3")
-    requests_log.setLevel(logging.DEBUG)
-    requests_log.propagate = True
-    result = session.get(login_url)
-    try:
-        result = session.post(login_url, data=login_data, headers=login_headers,
-                              allow_redirects=False)
-        assert result.status_code == 302
-    except RuntimeError:
-        print("Login failed. Response code: " + str(result.status_code))
-    # print(result.status_code)
-    # print(result.text)
-    return session
 
 
 class NotRacedError(Exception):
     pass
-
-
-def parse_race_analysis(session, season: int = None, race: int = None):
-    """
-    Loads and parses the race analysis page
-    :param session: a logged-in session
-    :param season: the season of the race to be parsed
-    :param race: the race number of the race to be parsed
-    :return: RaceAnalysisData containing the parsed data
-    """
-    if season is None and race is None:
-        html_page = session.get("https://gpro.net/gb/RaceAnalysis.asp")
-    elif season is not None and race is not None:
-        html_page = session.get(f"https://gpro.net/gb/RaceAnalysis.asp?SR={season},{race}")
-    else:
-        raise ValueError("season and race must either both be provided or neither.")
-    parsed_page = BeautifulSoup(html_page.text, 'html.parser')
-
-    # check for race participation and error if not participated
-
-    if parsed_page.select_one(".center").text == f"You did not participate in Season {season}, Race {race}":
-        raise NotRacedError(f"You did not participate in Season {season}, Race {race}")
-
-    data = RaceAnalysisData()
-    # populate instance with basic info
-    data.track_name = parsed_page.select_one(".block > a:nth-child(7)").text
-    data.track_id = re.search(r"id=(\d*)", parsed_page.select_one(
-        ".block > a:nth-child(7)").attrs.get("href")).group(1)
-    # pull season, race number and group with regex
-    regex = re.compile(r"Season (\d*) - Race (\d*) \((\w* - \d*)\)")
-    regex.search(parsed_page.select_one(".block").text).group(1)
-    data.season = int(regex.search(parsed_page.select_one(".block").text).group(1))
-    data.race = int(regex.search(parsed_page.select_one(".block").text).group(2))
-    data.group = regex.search(parsed_page.select_one(".block").text).group(3)
-
-    # parse setups
-    (data.qualifying1.setup, data.qualifying2.setup, data.setup_race) = _parse_race_analysis_setups(parsed_page)
-
-    # parse driver
-    (data.driver_stats, data.driver_change) = _parse_race_analysis_driver(parsed_page)
-
-    # parse car parts data
-    (data.car_part_levels, data.car_part_wear_start, data.car_part_wear_finish) = _parse_race_analysis_car_parts(
-        parsed_page)
-
-    # parse weather forecast
-    weather_table = parsed_page.find("th", text="Sessions weather").parent.parent
-    qualifying_weather_regex = re.compile(r"Temp: (\d*)°C\s*Humidity: (\d*)%")
-    # qualifying 1 weather
-    data.qualifying1.weather = weather_table.select_one("tr:nth-of-type(3) > td:nth-of-type(1) > img").attrs["title"]
-    data.qualifying1.temperature = int(qualifying_weather_regex.search(weather_table.select_one("tr:nth-of-type(3) > "
-                                                                                                "td:nth-of-type(1)"
-                                                                                                ).text).group(1))
-    data.qualifying1.humidity = int(qualifying_weather_regex.search(weather_table.select_one("tr:nth-of-type(3) > "
-                                                                                             "td:nth-of-type(1)"
-                                                                                             ).text).group(2))
-    # qualifying 2 weather
-    data.qualifying2.weather = weather_table.select_one("tr:nth-of-type(3) > td:nth-of-type(2) > img").attrs["title"]
-    data.qualifying2.temperature = int(
-        qualifying_weather_regex.search(weather_table.select_one("tr:nth-of-type(3) > td:nth-of-type(2)").text).group(
-            1))
-    data.qualifying2.humidity = int(
-        qualifying_weather_regex.search(weather_table.select_one("tr:nth-of-type(3) > td:nth-of-type(2)").text).group(
-            2))
-    # forecasts
-    forecast_regex = re.compile(
-        r"Temp:\s*(\d*)°\s*-\s*(\d*)°\s*Humidity:\s*(\d*)%\s*-\s*(\d*)%\s*Rain\s*probability:\s*(\d*)%\s*-\s*(\d*)%"
-    )
-    match1 = forecast_regex.search(weather_table.select_one("tr:nth-of-type(6)>td:nth-of-type(1)").text)
-    forecast1 = WeatherForecastData(temperature_min=match1.group(1), temperature_max=match1.group(2),
-                                    humidity_min=match1.group(3), humidity_max=match1.group(4),
-                                    rain_min=match1.group(5), rain_max=match1.group(6))
-    match2 = forecast_regex.search(weather_table.select_one("tr:nth-of-type(6)>td:nth-of-type(2)").text)
-    forecast2 = WeatherForecastData(temperature_min=match2.group(1), temperature_max=match2.group(2),
-                                    humidity_min=match2.group(3), humidity_max=match2.group(4),
-                                    rain_min=match2.group(5), rain_max=match2.group(6))
-    match3 = forecast_regex.search(weather_table.select_one("tr:nth-of-type(8)>td:nth-of-type(1)").text)
-    forecast3 = WeatherForecastData(temperature_min=match3.group(1), temperature_max=match3.group(2),
-                                    humidity_min=match3.group(3), humidity_max=match3.group(4),
-                                    rain_min=match3.group(5), rain_max=match3.group(6))
-    match4 = forecast_regex.search(weather_table.select_one("tr:nth-of-type(8)>td:nth-of-type(2)").text)
-    forecast4 = WeatherForecastData(temperature_min=match4.group(1), temperature_max=match4.group(2),
-                                    humidity_min=match4.group(3), humidity_max=match4.group(4),
-                                    rain_min=match4.group(5), rain_max=match4.group(6))
-    data.weather = (forecast1, forecast2, forecast3, forecast4)
-
-    return data
 
 
 def _parse_race_analysis_setups(parsed_page: BeautifulSoup) -> tuple[SetupDataClass, SetupDataClass, SetupDataClass]:
