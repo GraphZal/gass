@@ -4,7 +4,9 @@ scrape and parse its contents.
 """
 import json
 import os
+import time
 from dataclasses import dataclass, field, asdict
+from dataclasses_json import dataclass_json
 import datetime
 import logging
 import re
@@ -170,6 +172,7 @@ class LapData:
     events: str = None
 
 
+@dataclass_json
 @dataclass
 class RaceAnalysisData:
     track_name: str = None
@@ -206,13 +209,25 @@ class RaceAnalysisData:
 
 
 class GproScraper:
-    def __init__(self, username: str, password: str):
-        self.username: str = username
-        self.password: str = password
-        self.session: requests.Session = self._session_login()
-        self.saved_data: dict[(int, int), RaceAnalysisData] = dict()
+    def __init__(self, username: str, password: str, save_directory: str = "./saved_races"):
         logging.basicConfig()
         self.logger = logging.getLogger()
+        self.username: str = username
+        self.password: str = password
+        self.save_directory: str = save_directory
+        self.session: requests.Session = self._session_login()
+        self.saved_data: dict[(int, int), RaceAnalysisData] = dict()
+        if self.save_directory is not None:
+            if not os.path.exists(self.save_directory):
+                os.makedirs(self.save_directory)
+            for filename in os.listdir(save_directory):
+                if os.path.isfile(os.path.join(save_directory, filename)):
+                    self.logger.log(logging.DEBUG, f"loading saved data from {os.path.join(save_directory, filename)}")
+                    with open(os.path.join(save_directory, filename), "r") as file:
+                        json_data = file.read()
+                        race_data: RaceAnalysisData = RaceAnalysisData.from_json(json_data)
+                        self.saved_data[(race_data.season, race_data.race)] = race_data
+                        self.logger.log(logging.DEBUG, f"loaded season {race_data.season} race {race_data.race}")
 
     def _session_login(self):
         session = requests.Session()
@@ -240,9 +255,9 @@ class GproScraper:
         # print(result.text)
         return session
 
-    def get_race_analysis(self, season: int = None, race: int=None) -> RaceAnalysisData:
+    def get_race_analysis(self, season: int = None, race: int = None) -> RaceAnalysisData:
         try:
-            data = self.saved_data[(season,race)]
+            data = self.saved_data[(season, race)]
         except KeyError:
             data = self.parse_race_analysis(season, race)
         return data
@@ -252,10 +267,13 @@ class GproScraper:
 
         parsed_page = self.load_race_analysis(season, race)
 
-        # check for race participation and error if not participated
+        data: RaceAnalysisData = RaceAnalysisData()
+        # check for race participation and exit early if not raced
         if parsed_page.select_one(".center").text == f"You did not participate in Season {season}, Race {race}":
-            raise NotRacedError(f"You did not participate in Season {season}, Race {race}")
-        data = RaceAnalysisData()
+            data.season = season
+            data.race = race
+            self.save_race(data)
+            return data
         # populate instance with basic info
         data.track_name = parsed_page.select_one(".block > a:nth-child(7)").text
         data.track_id = re.search(r"id=(\d*)", parsed_page.select_one(
@@ -277,24 +295,29 @@ class GproScraper:
         weather_table = parsed_page.find("th", text="Sessions weather").parent.parent
         qualifying_weather_regex = re.compile(r"Temp: (\d*)°C\s*Humidity: (\d*)%")
         # qualifying 1 weather
-        data.qualifying1.weather = weather_table.select_one("tr:nth-of-type(3) > td:nth-of-type(1) > img").attrs["title"]
-        data.qualifying1.temperature = int(qualifying_weather_regex.search(weather_table.select_one("tr:nth-of-type(3) > "
-                                                                                                    "td:nth-of-type(1)"
-                                                                                                    ).text).group(1))
+        data.qualifying1.weather = weather_table.select_one("tr:nth-of-type(3) > td:nth-of-type(1) > img").attrs[
+            "title"]
+        data.qualifying1.temperature = int(
+            qualifying_weather_regex.search(weather_table.select_one("tr:nth-of-type(3) > "
+                                                                     "td:nth-of-type(1)"
+                                                                     ).text).group(1))
         data.qualifying1.humidity = int(qualifying_weather_regex.search(weather_table.select_one("tr:nth-of-type(3) > "
                                                                                                  "td:nth-of-type(1)"
                                                                                                  ).text).group(2))
         # qualifying 2 weather
-        data.qualifying2.weather = weather_table.select_one("tr:nth-of-type(3) > td:nth-of-type(2) > img").attrs["title"]
+        data.qualifying2.weather = weather_table.select_one("tr:nth-of-type(3) > td:nth-of-type(2) > img").attrs[
+            "title"]
         data.qualifying2.temperature = int(
-            qualifying_weather_regex.search(weather_table.select_one("tr:nth-of-type(3) > td:nth-of-type(2)").text).group(
+            qualifying_weather_regex.search(
+                weather_table.select_one("tr:nth-of-type(3) > td:nth-of-type(2)").text).group(
                 1))
         data.qualifying2.humidity = int(
-            qualifying_weather_regex.search(weather_table.select_one("tr:nth-of-type(3) > td:nth-of-type(2)").text).group(
+            qualifying_weather_regex.search(
+                weather_table.select_one("tr:nth-of-type(3) > td:nth-of-type(2)").text).group(
                 2))
         # forecasts
         forecast_regex = re.compile(
-            r"Temp:\s*(\d*)°\s*-\s*(\d*)°\s*Humidity:\s*(\d*)%\s*-\s*(\d*)%\s*Rain\s*probability:\s*(\d*)%\s*-?\s*(\d*)%?"
+          r"Temp:\s*(\d*)°\s*-\s*(\d*)°\s*Humidity:\s*(\d*)%\s*-\s*(\d*)%\s*Rain\s*probability:\s*(\d*)%\s*-?\s*(\d*)%?"
         )
         match1 = forecast_regex.search(weather_table.select_one("tr:nth-of-type(6)>td:nth-of-type(1)").text)
         forecast1 = WeatherForecastData(temperature_min=match1.group(1), temperature_max=match1.group(2),
@@ -317,8 +340,14 @@ class GproScraper:
                                         rain_min=match4.group(5),
                                         rain_max=match4.group(6) if match4.group(6) else match4.group(5))
         data.weather = (forecast1, forecast2, forecast3, forecast4)
-        self.saved_data[(season,race)] = data
+        self.save_race(data)
         return data
+
+    def save_race(self, data):
+        self.saved_data[(data.season, data.race)] = data
+        if self.save_directory is not None:
+            with open(os.path.join(self.save_directory, f"race_analysis_{data.season}-{data.race}.json"), "w") as file:
+                file.write(data.to_json(indent=4))
 
     def load_race_analysis(self, season, race):
         """load the race analysis of the specified race"""
@@ -334,7 +363,6 @@ class GproScraper:
         return parsed_page
 
     def parse_season_race_analysis(self, season: int = None):
-        most_recent = self.parse_race_analysis()
         results = dict()
         for r in range(1, 18):
             try:
@@ -343,7 +371,7 @@ class GproScraper:
                 self.logger.log(logging.DEBUG, f"scraped Season {season}, Race {r} successfully.")
             except NotRacedError:
                 self.logger.log(logging.DEBUG, f"Season {season}, Race {r} was not raced. Skipping.")
-                continue
+            time.sleep(10)
         self.logger.log(logging.DEBUG, f"successfully scraped {len(results)} races in season {season}.")
         return results
 
@@ -355,6 +383,25 @@ class GproScraper:
             results.update(self.parse_season_race_analysis(s))
         self.logger.log(logging.DEBUG, f"successfully scraped {len(results)} races in total.")
         return results
+
+    def get_all_race_analysis(self) -> None:
+        """Query all races and parse missing ones"""
+        self.logger.log(logging.DEBUG, "Checking data for all races...")
+        most_recent = self.parse_race_analysis()
+        self.logger.log(logging.DEBUG, f"most recent race is season {most_recent.season}, race {most_recent.race}")
+        for s in range(1, most_recent.season):
+            for r in range(1, 18):
+                if s == most_recent.season and r > most_recent.race:
+                    self.logger.log(logging.DEBUG, f"Season {s}, Race {r} is in future, skipping.")
+                    continue
+                if (s, r) in self.saved_data:
+                    self.logger.log(logging.DEBUG, f"Season {s}, Race {r} data found.")
+                    continue
+                else:
+                    self.logger.log(logging.DEBUG, f"Season {s}, Race {r} not found, parsing.")
+                    self.parse_race_analysis(s, r)
+                    time.sleep(10)
+        pass
 
 
 class NotRacedError(Exception):
@@ -448,7 +495,8 @@ def manual_test_parse_all_race_analysis():
 
 def main():
     """Main method for manual testing purposes."""
-    manual_test_dump_json_file()
+    scraper = terminal_login()
+    scraper.get_all_race_analysis()
 
 
 def manual_test_parse_single_race_analysis(season=None, race=None):
@@ -465,7 +513,7 @@ def manual_test_dump_json_file(season=None, race=None):
     scraper = terminal_login()
     try:
         parsed_race = scraper.parse_race_analysis(season, race)
-        dump_json_to_file(parsed_race, f"./scraped_data/race_analysis_{parsed_race.season}-{parsed_race.race}.json")
+        dump_json_to_file(parsed_race, f"./saved_races/race_analysis_{parsed_race.season}-{parsed_race.race}.json")
     except NotRacedError:
         raise
 
