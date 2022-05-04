@@ -11,9 +11,10 @@ import datetime
 import logging
 import re
 from getpass import getpass
-
+import packaging
 import requests
 from bs4 import BeautifulSoup
+from gass import __version__
 
 
 @dataclass
@@ -175,6 +176,8 @@ class LapData:
 @dataclass_json
 @dataclass
 class RaceAnalysisData:
+    version: str = None
+    raced: bool = None
     track_name: str = None
     track_id: str = None
     season: int = None
@@ -226,6 +229,15 @@ class GproScraper:
                     with open(os.path.join(save_directory, filename), "r") as file:
                         json_data = file.read()
                         race_data: RaceAnalysisData = RaceAnalysisData.from_json(json_data)
+                        #upgrade unversioned data to versioned format
+                        if race_data.version is None:
+                            self.logger.log(logging.DEBUG, f"unversioned race data found, migrating...")
+                            race_data.version = '0.0.1'
+                            if race_data.track_name is None:
+                                race_data.raced = False
+                            else:
+                                race_data.raced = True
+                            self.save_race(race_data)
                         self.saved_data[(race_data.season, race_data.race)] = race_data
                         self.logger.log(logging.DEBUG, f"loaded season {race_data.season} race {race_data.race}")
 
@@ -237,7 +249,7 @@ class GproScraper:
                       'token': '',
                       'Logon': 'Login',
                       'LogonFake': 'Sign+in'}
-        login_headers = {'User-Agent': 'GASS/0.0.1 by Jens Jaeschke'}
+        login_headers = {'User-Agent': f'GASS/{__version__} by Jens Jaeschke'}
         session.headers.update(login_headers)
         logging.basicConfig()
         logging.getLogger().setLevel(logging.DEBUG)
@@ -260,6 +272,10 @@ class GproScraper:
             data = self.saved_data[(season, race)]
         except KeyError:
             data = self.parse_race_analysis(season, race)
+
+        if data.raced and packaging.version.parse(data.version) < packaging.version.parse(__version__):
+            data = self.parse_race_analysis(season, race)
+
         return data
 
     def parse_race_analysis(self, season: int = None, race: int = None) -> RaceAnalysisData:
@@ -268,13 +284,16 @@ class GproScraper:
         parsed_page = self.load_race_analysis(season, race)
 
         data: RaceAnalysisData = RaceAnalysisData()
+        data.version = __version__
         # check for race participation and exit early if not raced
         if parsed_page.select_one(".center").text == f"You did not participate in Season {season}, Race {race}":
             data.season = season
             data.race = race
+            data.raced = False
             self.save_race(data)
             return data
         # populate instance with basic info
+        data.raced = True
         data.track_name = parsed_page.select_one(".block > a:nth-child(7)").text
         data.track_id = re.search(r"id=(\d*)", parsed_page.select_one(
             ".block > a:nth-child(7)").attrs.get("href")).group(1)
