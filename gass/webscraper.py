@@ -496,13 +496,16 @@ def _parse_race_analysis_car_parts(parsed_page: BeautifulSoup) -> tuple[CarPartD
     return car_level_data, start_wear, finish_wear
 
 
-def terminal_login():
+def terminal_login(save_dir=None):
     """
     Requests username and password on the command line, creates a logged-in scraper instance
     """
     username = input("GPRO-Username:")
     password = getpass("GPRO-Password:")
-    scraper = GproScraper(username, password)
+    if save_dir:
+        scraper = GproScraper(username, password, save_dir)
+    else:
+        scraper = GproScraper(username, password)
     return scraper
 
 
