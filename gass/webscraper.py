@@ -214,7 +214,7 @@ class RaceAnalysisData:
 class GproScraper:
     def __init__(self, username: str, password: str, save_directory: str = "./saved_races"):
         logging.basicConfig()
-        self.logger = logging.getLogger()
+        self.logger = logging.getLogger("GproScraper")
         self.username: str = username
         self.password: str = password
         self.save_directory: str = save_directory
